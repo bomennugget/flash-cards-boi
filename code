@@ -1,0 +1,215 @@
+(function(){
+  const EXIST_ID = 'flashcardHelperPro';
+  const old = document.getElementById(EXIST_ID);
+  if(old) old.remove();
+
+  const box = document.createElement('div');
+  box.id = EXIST_ID;
+  Object.assign(box.style,{
+    position:'fixed', top:'80px', left:'80px', width:'450px', maxHeight:'80vh',
+    background:'#f7f8fa', borderRadius:'12px', boxShadow:'0 8px 28px rgba(0,0,0,0.25)',
+    padding:'12px', fontFamily:'system-ui, sans-serif', zIndex:2147483647, cursor:'grab', overflow:'hidden'
+  });
+
+  box.innerHTML = `
+    <div id="hdr" style="display:flex;justify-content:space-between;align-items:center;cursor:grab;margin-bottom:10px">
+      <strong style="font-size:16px;color:#222">🃏 Flashcard Helper Pro</strong>
+      <div>
+        <button id="helpBtn" style="border:none;background:none;font-size:16px;cursor:pointer;color:#555;margin-right:6px" title="Help">❔</button>
+        <button id="closeBtn" style="border:none;background:none;font-size:16px;cursor:pointer;color:#888">✖</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:10px;display:flex;gap:4px">
+      <input id="termInput" type="text" placeholder="Term" style="flex:1;padding:6px;border-radius:6px;border:1px solid #ccc;font-size:14px;color:#000;background:#fff">
+      <input id="defInput" type="text" placeholder="Definition" style="flex:1;padding:6px;border-radius:6px;border:1px solid #ccc;font-size:14px;color:#000;background:#fff">
+    </div>
+    <button id="addBtn" style="width:100%;margin-bottom:10px;padding:6px;border:none;border-radius:6px;background:#4caf50;color:white;cursor:pointer">Add Flashcard</button>
+
+    <div style="margin-bottom:10px;max-height:200px;overflow-y:auto;border:1px solid #ddd;border-radius:8px;padding:6px;background:white" id="flashcardList"></div>
+
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+      <button id="quizBtn" style="flex:1;padding:6px;border:none;border-radius:6px;background:#2196F3;color:white;cursor:pointer">Start Quiz</button>
+      <button id="resetBtn" style="flex:1;padding:6px;border:none;border-radius:6px;background:#FF5722;color:white;cursor:pointer">Reset Quiz / Show All</button>
+    </div>
+
+    <div id="quizArea" style="margin-top:6px;font-size:14px;color:#222;min-height:60px;white-space:pre-wrap"></div>
+    <div id="quizControls" style="margin-top:6px;display:flex;gap:6px"></div>
+  `;
+
+  document.body.appendChild(box);
+
+  // Dragging
+  (function(){
+    const hdr = box.querySelector('#hdr');
+    let dragging=false, sx=0, sy=0, bx=0, by=0;
+    hdr.addEventListener('mousedown', e=>{
+      dragging=true; sx=e.clientX; sy=e.clientY; bx=box.offsetLeft; by=box.offsetTop; e.preventDefault();
+    });
+    document.addEventListener('mousemove', e=>{
+      if(!dragging) return;
+      box.style.left=(bx+e.clientX-sx)+'px';
+      box.style.top=(by+e.clientY-sy)+'px';
+    });
+    document.addEventListener('mouseup', ()=>{ dragging=false; });
+  })();
+
+  // Close
+  box.querySelector('#closeBtn').addEventListener('click', ()=>box.remove());
+
+  // Flashcards array + localStorage
+  let flashcards = JSON.parse(localStorage.getItem('flashcardsPro')||'[]');
+
+  function saveCards(){ localStorage.setItem('flashcardsPro', JSON.stringify(flashcards)); }
+
+  function renderList(){
+    const listDiv = box.querySelector('#flashcardList');
+    listDiv.innerHTML = '';
+    flashcards.forEach((f,i)=>{
+      const div = document.createElement('div');
+      div.style.borderBottom='1px dashed #eee';
+      div.style.padding='4px';
+      div.style.cursor='pointer';
+      div.style.color = '#222';
+      div.textContent = `${f.term} → ${f.definition}`;
+      div.title = 'Click to remove';
+      div.addEventListener('click', ()=>{
+        flashcards.splice(i,1);
+        renderList();
+        saveCards();
+      });
+      listDiv.appendChild(div);
+    });
+  }
+
+  renderList();
+
+  // Add flashcard
+  box.querySelector('#addBtn').addEventListener('click', ()=>{
+    const term = box.querySelector('#termInput').value.trim();
+    const def = box.querySelector('#defInput').value.trim();
+    if(!term || !def){ alert('Enter both term and definition'); return; }
+    flashcards.push({term, definition:def});
+    box.querySelector('#termInput').value='';
+    box.querySelector('#defInput').value='';
+    renderList();
+    saveCards();
+  });
+
+  // Help button
+  box.querySelector('#helpBtn').addEventListener('click', ()=>{
+    alert(
+`Hello, this is me bomennugget and this is made by me and ChatGPT so epik!
+
+Features:
+
+1. Add Flashcards:
+   - Enter a term and a definition, click "Add Flashcard".
+   - Flashcards appear in the list below. Click a flashcard to remove it.
+
+2. Quiz Mode:
+   - Click "Start Quiz" to begin.
+   - Flashcard list hides automatically.
+   - Term appears first. Click "Show Definition" to reveal.
+   - "Known ✅" removes card from quiz.
+   - "Review Later 🔄" skips to next card.
+   - Quiz ends when all cards are marked known, list reappears.
+
+3. Reset / Show All:
+   - Click "Reset Quiz / Show All" to stop the quiz and show all flashcards again.
+
+4. Persistent Storage:
+   - Flashcards are saved in your browser, remain after refreshing.
+
+5. Draggable UI:
+   - Click and drag the top bar to move the popup.
+
+Enjoy studying!`
+    );
+  });
+
+  // Quiz
+  function startQuiz(){
+    if(flashcards.length===0){ alert('No flashcards added'); return; }
+
+    const quizArea = box.querySelector('#quizArea');
+    const controls = box.querySelector('#quizControls');
+    const listDiv = box.querySelector('#flashcardList');
+
+    listDiv.style.display = 'none';
+    controls.innerHTML = '';
+
+    let quizCards = [...flashcards].sort(()=>Math.random()-0.5);
+    let index = 0;
+
+    function showCard(){
+      const card = quizCards[index];
+      quizArea.textContent = `Term: ${card.term}\nClick "Show Definition"`;
+    }
+
+    function nextCard(){
+      index = (index+1) % quizCards.length;
+      showCard();
+    }
+
+    function markKnown(){
+      quizCards.splice(index,1);
+      if(quizCards.length===0){
+        quizArea.textContent='Quiz finished!';
+        controls.innerHTML='';
+        listDiv.style.display = 'block';
+        return;
+      }
+      index = index % quizCards.length;
+      showCard();
+    }
+
+    function markReview(){
+      nextCard();
+    }
+
+    showCard();
+
+    // Controls
+    const showBtn = document.createElement('button');
+    showBtn.textContent = 'Show Definition';
+    showBtn.style.flex='1';
+    showBtn.onclick = ()=>{
+      const card = quizCards[index];
+      quizArea.textContent = `Term: ${card.term}\nDefinition: ${card.definition}`;
+    };
+
+    const knownBtn = document.createElement('button');
+    knownBtn.textContent = 'Known ✅';
+    knownBtn.style.flex='1';
+    knownBtn.onclick = markKnown;
+
+    const reviewBtn = document.createElement('button');
+    reviewBtn.textContent = 'Review Later 🔄';
+    reviewBtn.style.flex='1';
+    reviewBtn.onclick = markReview;
+
+    [showBtn, knownBtn, reviewBtn].forEach(b=>{
+      b.style.padding='6px'; b.style.border='none'; b.style.borderRadius='6px'; b.style.cursor='pointer';
+    });
+    showBtn.style.background='#FF9800'; showBtn.style.color='white';
+    knownBtn.style.background='#4caf50'; knownBtn.style.color='white';
+    reviewBtn.style.background='#2196F3'; reviewBtn.style.color='white';
+
+    controls.append(showBtn, knownBtn, reviewBtn);
+  }
+
+  box.querySelector('#quizBtn').addEventListener('click', startQuiz);
+
+  // Reset Quiz / Show All
+  box.querySelector('#resetBtn').addEventListener('click', ()=>{
+    const listDiv = box.querySelector('#flashcardList');
+    const quizArea = box.querySelector('#quizArea');
+    const controls = box.querySelector('#quizControls');
+
+    listDiv.style.display = 'block';
+    quizArea.textContent = '';
+    controls.innerHTML = '';
+  });
+
+})();
